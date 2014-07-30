@@ -11,5 +11,9 @@ Lead
 
 Members
 -------
+* @gdude2002
+
+Proposed Members
+----------------
 * @Hoolean
 * @sevs44936
