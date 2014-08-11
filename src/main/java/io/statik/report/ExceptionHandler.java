@@ -6,6 +6,9 @@ import io.netty.handler.timeout.ReadTimeoutException;
 
 import java.util.logging.Level;
 
+/**
+ * Class to handle uncaught exceptions in the pipeline.
+ */
 public class ExceptionHandler extends ChannelInboundHandlerAdapter {
 
     private final ReportServer rs;

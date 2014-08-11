@@ -22,12 +22,20 @@ import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
+/**
+ * Main class. Runs the report server for Statik.
+ */
 public class ReportServer {
 
     private final static Logger logger = Logger.getLogger("io.statik.report");
     private final Configuration c;
     private final MongoDB mdb;
 
+    /**
+     * Starts the ReportServer with the given configuration file.
+     *
+     * @param configFileName File name to load as the configuration
+     */
     public ReportServer(final String configFileName) {
         this.setUpLogger();
         this.c = new Configuration(new File(configFileName));
@@ -64,6 +72,13 @@ public class ReportServer {
         }
     }
 
+    /**
+     * Entry point. Creates a new {@link io.statik.report.ReportServer}, catching any exceptions.
+     * <p/>
+     * If any exception is caught, the application will exit with status 1.
+     *
+     * @param args Command-line arguments
+     */
     public static void main(final String[] args) {
         try {
             new ReportServer(args.length > 0 ? args[0] : "config.json");
@@ -74,6 +89,11 @@ public class ReportServer {
         }
     }
 
+    /**
+     * Sets up the main {@link java.util.logging.Logger}.
+     * <p/>
+     * Example output: <code>[WARNING] Some message!</code>
+     */
     private void setUpLogger() {
         final ConsoleHandler ch = new ConsoleHandler();
         ch.setFormatter(new Formatter() {
@@ -86,14 +106,30 @@ public class ReportServer {
         this.getLogger().addHandler(ch);
     }
 
+    /**
+     * Gets the {@link io.statik.report.Configuration} this server is running with.
+     *
+     * @return Configuration
+     */
     public Configuration getConfiguration() {
         return this.c;
     }
 
+    /**
+     * Gets the main {@link java.util.logging.Logger} for this server. This should be used whenever it is necessary to
+     * output to the console.
+     *
+     * @return Logger
+     */
     public Logger getLogger() {
         return ReportServer.logger;
     }
 
+    /**
+     * Gets the MongoDB link for this server.
+     *
+     * @return MongoDB
+     */
     public MongoDB getMongoDB() {
         return this.mdb;
     }

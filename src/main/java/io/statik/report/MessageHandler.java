@@ -13,6 +13,9 @@ import org.json.JSONStringer;
 import java.nio.charset.Charset;
 import java.util.logging.Level;
 
+/**
+ * Class to process expected messages.
+ */
 public class MessageHandler {
 
     private final ReportServer rs;
@@ -23,6 +26,11 @@ public class MessageHandler {
     private final String illegalContent = this.createErrorResponse("The content provided was an illegal type.");
     private final String internalError = this.createErrorResponse("An internal error occurred whilst processing your data.");
 
+    /**
+     * Creates a new MessageHandler.
+     *
+     * @param rs ReportServer this is running from
+     */
     public MessageHandler(final ReportServer rs) {
         this.rs = rs;
         this.collection = this.rs.getConfiguration().getString("config.database.collections.data", null);
@@ -38,7 +46,13 @@ public class MessageHandler {
         return new JSONStringer().object().key("error").value(value).endObject().toString();
     }
 
-    public BasicDBList addAndVerifyPlugins(final JSONArray jsonPlugins) {
+    /**
+     * Creates a MongoDB-compatible list of plugins and their data from a JSONArray.
+     *
+     * @param jsonPlugins JSONArray containing plugins (may be empty)
+     * @return BasicDBList (never null)
+     */
+    public BasicDBList createPluginList(final JSONArray jsonPlugins) {
         final BasicDBList plugins = new BasicDBList();
         for (int i = 0; i < jsonPlugins.length(); i++) {
             final JSONObject jo = jsonPlugins.optJSONObject(i);
@@ -128,7 +142,7 @@ public class MessageHandler {
                                 .append("version", minecraftMod.getString("version"))
                         )
                 )
-                .append("plugins", this.addAndVerifyPlugins(jo.getJSONArray("plugins")));
+                .append("plugins", this.createPluginList(jo.getJSONArray("plugins")));
             dbc.insert(insert);
         } catch (final JSONException ex) {
             return this.badContent;
