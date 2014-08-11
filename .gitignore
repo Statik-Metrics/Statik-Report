@@ -1,0 +1,34 @@
+# Eclipse
+/.classpath
+/.project
+/.settings
+
+# NetBeans
+/nbproject
+
+# Maven
+build.xml
+/target
+dependency-reduced-pom.xml
+
+# vim
+.*.sw[a-p]
+
+# various other potential build files
+build
+bin
+dist
+manifest.mf
+package
+
+# Mac
+.DS_Store
+
+# IntelliJ IDEA
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Vagrant
+.vagrant/

@@ -1,0 +1,21 @@
+{
+  "config": {
+    "bind": {
+      "hostname": "localhost",
+      "port": 12345
+    },
+    "database": {
+      "hostname": "localhost",
+      "port": 27017,
+      "database": "",
+      "collections": {
+        "data": "data_collection"
+      },
+      "auth": {
+        "enabled": true,
+        "username": "",
+        "password": ""
+      }
+    }
+  }
+}
