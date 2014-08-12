@@ -1,16 +1,16 @@
 package io.statik.report;
 
-import com.mongodb.BasicDBList;
-import com.mongodb.BasicDBObject;
 import com.trendrr.beanstalk.BeanstalkClient;
 import com.trendrr.beanstalk.BeanstalkException;
 import io.netty.buffer.ByteBuf;
-import org.json.JSONArray;
+import io.netty.buffer.Unpooled;
+import io.statik.report.ReportHandler.Stage;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.json.JSONStringer;
 
 import java.nio.charset.Charset;
+import java.util.UUID;
 import java.util.logging.Level;
 
 /**
@@ -44,49 +44,13 @@ public class MessageHandler {
         return new JSONStringer().object().key("error").value(value).endObject().toString();
     }
 
-    /**
-     * Creates a MongoDB-compatible list of plugins and their data from a JSONArray.
-     *
-     * @param jsonPlugins JSONArray containing plugins (may be empty)
-     * @return BasicDBList (never null)
-     */
-    public BasicDBList createPluginList(final JSONArray jsonPlugins) {
-        final BasicDBList plugins = new BasicDBList();
-        for (int i = 0; i < jsonPlugins.length(); i++) {
-            final JSONObject jo = jsonPlugins.optJSONObject(i);
-            if (jo == null) continue;
-            final BasicDBObject plugin = new BasicDBObject();
-            plugin
-                .append("name", jo.getString("name"))
-                .append("version", jo.getString("version"));
-            if (jo.has("data")) {
-                final JSONArray jsonPluginCustomData = jo.getJSONArray("data");
-                final BasicDBList pluginCustomData = new BasicDBList();
-                for (int ii = 0; ii < jsonPluginCustomData.length(); ii++) {
-                    final JSONObject customData = jsonPluginCustomData.optJSONObject(ii);
-                    if (customData == null) continue;
-                    pluginCustomData.add(new BasicDBObject()
-                            .append("name", customData.getString("name"))
-                            .append("value", customData.get("value"))
-                    );
-                }
-                plugin.append("data", pluginCustomData);
-            }
-            plugins.add(plugin);
-        }
-        return plugins;
+    private byte getStatus(final UUID serverUUID) {
+        // TODO: check
+        return (byte) 0;
     }
 
-    /**
-     * Handles the given message. If msg is a ByteBuf, it will be processed into a JSONObject and attempted to be
-     * stored.
-     *
-     * @param msg Message from a channel method
-     * @return String to give back to the client
-     */
-    public String handleMessage(final Object msg) {
-        if (!(msg instanceof ByteBuf)) return this.illegalContent;
-        final ByteBuf bb = (ByteBuf) msg;
+    public String handleData(final ByteBuf bb, final Client client) {
+        client.setStage(Stage.NO_DATA);
         final String message = bb.toString(this.utf8);
         try {
             final JSONObject jo = new JSONObject(message);
@@ -96,10 +60,47 @@ public class MessageHandler {
         } catch (final JSONException ex) {
             return this.badContent;
         } catch (final Throwable t) {
-            this.rs.getLogger().warning("An exception was thrown while handling a request:");
-            this.rs.getLogger().log(Level.WARNING, t.getMessage(), t);
+            this.rs.getLogger().severe("An exception was thrown while handling a request:");
+            this.rs.getLogger().log(Level.SEVERE, t.getMessage(), t);
+            t.printStackTrace();
         }
         return this.internalError;
+    }
+
+    public ByteBuf handleIntroduction(final ByteBuf bb, final Client c) {
+        final int version = bb.getInt(0);
+        final UUID uuid = new UUID(bb.getLong(1), bb.getLong(2));
+        final byte[] badVersion = "Bad version".getBytes(Charset.forName("UTF-8"));
+        final ByteBuf ret = Unpooled.buffer(version == 1 ? 3 : 3 + badVersion.length);
+        final byte status = this.getStatus(uuid);
+        // TODO: bad status if bad version
+        ret.writeByte(status);
+        ret.writeShort((short) 0);
+        if (status != (byte) 0) {
+            ret.writeBytes(badVersion);
+            c.setStage(Stage.NO_DATA);
+        } else c.setStage(Stage.DATA);
+        return ret;
+    }
+
+    /**
+     * Handles the given message. If msg is a ByteBuf, it will be processed into a JSONObject and attempted to be
+     * stored.
+     *
+     * @param msg Message from a channel method
+     * @return String to give back to the client
+     */
+    public Object handleMessage(final Object msg, final Client client) {
+        if (!(msg instanceof ByteBuf)) return this.illegalContent;
+        final ByteBuf bb = (ByteBuf) msg;
+        switch (client.getStage()) {
+            case INTRODUCTION:
+                return this.handleIntroduction(bb, client);
+            case DATA:
+                return this.handleData(bb, client);
+            default:
+                return this.internalError;
+        }
     }
 
     /**
@@ -116,7 +117,9 @@ public class MessageHandler {
             final BeanstalkClient bsc = this.rs.getNewBeanstalkClient();
             bsc.put(0L, 0, 5000, r.toString().getBytes(Charset.forName("UTF-8")));
             bsc.close();
-        } catch (final JSONException | IllegalArgumentException ex) {
+        } catch (final JSONException ex) {
+            return this.badContent;
+        } catch (final IllegalArgumentException ex) {
             this.rs.getLogger().log(Level.SEVERE, ex.getMessage(), ex);
             return this.badContent;
         } catch (final BeanstalkException ex) {

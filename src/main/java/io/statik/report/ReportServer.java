@@ -9,14 +9,14 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.handler.codec.string.StringDecoder;
-import io.netty.handler.codec.string.StringEncoder;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.statik.report.processing.ProcessThread;
 
 import java.io.File;
 import java.net.InetSocketAddress;
-import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Formatter;
@@ -32,6 +32,7 @@ public class ReportServer {
     private final static Logger logger = Logger.getLogger("io.statik.report");
     private final Configuration c;
     private final MongoDB mdb;
+    private final List<Client> clients = Collections.synchronizedList(new ArrayList<Client>());
 
     /**
      * Starts the ReportServer with the given configuration file.
@@ -53,10 +54,8 @@ public class ReportServer {
                 @Override
                 public void initChannel(final SocketChannel ch) throws Exception {
                     ch.pipeline().addLast(new ReadTimeoutHandler(10, TimeUnit.SECONDS));
-                    ch.pipeline().addLast(new StringEncoder(Charset.forName("UTF-8")));
                     ch.pipeline().addLast(new ReportHandler(ReportServer.this));
-                    ch.pipeline().addLast(new StringDecoder(Charset.forName("UTF-8")));
-                    ch.pipeline().addLast(new ExceptionHandler(ReportServer.this));
+                    ch.pipeline().addLast(new EndOfTheLine(ReportServer.this));
                 }
             });
             final ChannelFuture cf = sb.bind(
@@ -120,6 +119,21 @@ public class ReportServer {
         }
     }
 
+    public Client getClient(final InetSocketAddress isa) {
+        synchronized (this.getClients()) {
+            for (final Client client : this.getClients()) {
+                if (client.getRemoteAddress().equals(isa)) return client;
+            }
+        }
+        return null;
+    }
+
+    public List<Client> getClients() {
+        synchronized (this.clients) {
+            return this.clients;
+        }
+    }
+
     /**
      * Gets the {@link io.statik.report.Configuration} this server is running with.
      *
@@ -160,5 +174,4 @@ public class ReportServer {
             "processing"
         );
     }
-
 }

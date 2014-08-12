@@ -101,27 +101,31 @@ public class Request extends Configuration {
         final JSONObject systemOS = this.getJSONObject("system.os");
         final JSONObject minecraft = this.getJSONObject("minecraft");
         final JSONObject minecraftMod = this.getJSONObject("minecraft.mod");
-        return new Request(new JSONObject()
-            .put("system", new JSONObject()
-                    .put("java", system.getString("java"))
-                    .put("cores", system.getInt("cores"))
-                    .put("memory", system.getLong("memory"))
-                    .put("os", new JSONObject()
-                            .put("name", systemOS.getString("name"))
-                            .put("version", systemOS.getString("version"))
-                            .put("arch", systemOS.getString("arch"))
-                    )
-            )
-            .put("minecraft", new JSONObject()
-                    .put("version", minecraft.getString("version"))
-                    .put("players", minecraft.getInt("players"))
-                    .put("online_mode", minecraft.getBoolean("online_mode"))
-                    .put("mod", new JSONObject()
-                            .put("name", minecraftMod.getString("name"))
-                            .put("version", minecraftMod.getString("version"))
-                    )
-            )
-            .put("plugins", this.createPluginList(this.getJSONArray("plugins"))));
+        try {
+            return new Request(new JSONObject()
+                .put("system", new JSONObject()
+                        .put("java", system.getString("java"))
+                        .put("cores", system.getInt("cores"))
+                        .put("memory", system.getLong("memory"))
+                        .put("os", new JSONObject()
+                                .put("name", systemOS.getString("name"))
+                                .put("version", systemOS.getString("version"))
+                                .put("arch", systemOS.getString("arch"))
+                        )
+                )
+                .put("minecraft", new JSONObject()
+                        .put("version", minecraft.getString("version"))
+                        .put("players", minecraft.getInt("players"))
+                        .put("online_mode", minecraft.getBoolean("online_mode"))
+                        .put("mod", new JSONObject()
+                                .put("name", minecraftMod.getString("name"))
+                                .put("version", minecraftMod.getString("version"))
+                        )
+                )
+                .put("plugins", this.createPluginList(this.getJSONArray("plugins"))));
+        } catch (final NullPointerException ex) {
+            throw new JSONException(ex);
+        }
     }
 
     @Override
