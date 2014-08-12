@@ -44,13 +44,13 @@ public class BeanstalkClient {
     }
 
     private void init() throws BeanstalkException {
-        if (inited) return;
+        if (this.inited && this.con.isOpen()) return;
         this.inited = true;
         this.con = new BeanstalkConnection();
-        this.con.connect(addr, port);
+        this.con.connect(this.addr, this.port);
         if (this.tube != null) {
-            this.useTube(tube);
-            this.watchTube(tube);
+            this.useTube(this.tube);
+            this.watchTube(this.tube);
             this.ignoreTube("default");
         }
     }
@@ -226,7 +226,7 @@ public class BeanstalkClient {
             job.setClient(this);
             return job;
         } catch (BeanstalkDisconnectedException x) {
-            this.reap = true; //reap that shit..
+            this.reap = true;
             throw x;
         } catch (BeanstalkException x) {
             throw x;
@@ -271,8 +271,6 @@ public class BeanstalkClient {
             throw new BeanstalkException(line);
         } catch (BeanstalkDisconnectedException x) {
             this.reap = true;
-            throw x;
-        } catch (BeanstalkException x) {
             throw x;
         }
     }
