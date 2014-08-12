@@ -16,6 +16,11 @@
         "username": "",
         "password": ""
       }
+    },
+    "beanstalkd": {
+      "hostname": "localhost",
+      "port": 11300,
+      "processors": 4
     }
   }
 }

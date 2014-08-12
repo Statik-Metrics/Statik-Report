@@ -1,5 +1,6 @@
 package io.statik.report;
 
+import com.trendrr.beanstalk.BeanstalkClient;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
@@ -11,6 +12,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.string.StringDecoder;
 import io.netty.handler.codec.string.StringEncoder;
 import io.netty.handler.timeout.ReadTimeoutHandler;
+import io.statik.report.processing.ProcessThread;
 
 import java.io.File;
 import java.net.InetSocketAddress;
@@ -40,6 +42,7 @@ public class ReportServer {
         this.setUpLogger();
         this.c = new Configuration(new File(configFileName));
         this.mdb = new MongoDB(this);
+        this.startBeanstalkProcessors();
         final EventLoopGroup masterGroup = new NioEventLoopGroup();
         final EventLoopGroup slaveGroup = new NioEventLoopGroup();
         try {
@@ -107,6 +110,17 @@ public class ReportServer {
     }
 
     /**
+     * Starts a configurable amount of processors (if not configured, 4 is the default) in new threads. Processors sit
+     * and wait for beanstalkd to feed them jobs. Once receiving the job, the processor will process it and store it in
+     * the MongoDB.
+     */
+    private void startBeanstalkProcessors() {
+        for (int i = 0; i < this.getConfiguration().getInt("config.beanstalkd.processors", 4); i++) {
+            new ProcessThread(this).start();
+        }
+    }
+
+    /**
      * Gets the {@link io.statik.report.Configuration} this server is running with.
      *
      * @return Configuration
@@ -132,6 +146,19 @@ public class ReportServer {
      */
     public MongoDB getMongoDB() {
         return this.mdb;
+    }
+
+    /**
+     * Gets a new BeanstalkClient for immediate use.
+     *
+     * @return BeanstalkClient
+     */
+    public BeanstalkClient getNewBeanstalkClient() {
+        return new BeanstalkClient(
+            this.getConfiguration().getString("config.beanstalkd.hostname", null),
+            this.getConfiguration().getInt("config.beanstalkd.port", -1),
+            "processing"
+        );
     }
 
 }

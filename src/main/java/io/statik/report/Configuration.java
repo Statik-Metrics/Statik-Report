@@ -1,5 +1,6 @@
 package io.statik.report;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -12,6 +13,8 @@ import java.util.List;
 
 /**
  * Class for loading JSON configuration.
+ * <p/>
+ * Methods in this class should return null for invalid paths.
  */
 public class Configuration {
 
@@ -83,7 +86,7 @@ public class Configuration {
      */
     public boolean getBoolean(final String path, final boolean def) {
         final JSONObject parent = this.getJSONObject(this.getParent(path));
-        return parent.optBoolean(this.getLastNode(path), def);
+        return parent == null ? def : parent.optBoolean(this.getLastNode(path), def);
     }
 
     /**
@@ -95,9 +98,27 @@ public class Configuration {
         return this.configRoot;
     }
 
+    /**
+     * Gets an integer from the given path.
+     *
+     * @param path Path to get integer from
+     * @param def  Default value to use if the path cannot be found
+     * @return int
+     */
     public int getInt(final String path, final int def) {
         final JSONObject parent = this.getJSONObject(this.getParent(path));
-        return parent.optInt(this.getLastNode(path), def);
+        return parent == null ? def : parent.optInt(this.getLastNode(path), def);
+    }
+
+    /**
+     * Gets a JSONArray at the given path.
+     *
+     * @param path Path to get the JSONArray from
+     * @return JSONArray
+     */
+    public JSONArray getJSONArray(final String path) {
+        final JSONObject jo = this.getJSONObject(this.getParent(path));
+        return jo == null ? null : jo.optJSONArray(this.getLastNode(path));
     }
 
     /**
@@ -111,7 +132,7 @@ public class Configuration {
         JSONObject buffer = this.configRoot;
         for (final String part : path.split("\\.")) {
             buffer = buffer.optJSONObject(part);
-            if (buffer == null) throw new IllegalArgumentException("Invalid path: " + path);
+            if (buffer == null) return null;
         }
         return buffer;
     }
@@ -151,7 +172,7 @@ public class Configuration {
      */
     public String getString(final String path, final String def) {
         final JSONObject parent = this.getJSONObject(this.getParent(path));
-        return parent.optString(this.getLastNode(path), def);
+        return parent == null ? def : parent.optString(this.getLastNode(path), def);
     }
 
     /**
@@ -162,7 +183,8 @@ public class Configuration {
      */
     public boolean pathExists(final String path) {
         try {
-            return this.getJSONObject(this.getParent(path)).has(this.getLastNode(path));
+            final JSONObject parent = this.getJSONObject(this.getParent(path));
+            return parent != null && parent.has(this.getLastNode(path));
         } catch (final JSONException | IllegalArgumentException ex) {
             return false;
         }

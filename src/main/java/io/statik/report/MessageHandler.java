@@ -2,8 +2,8 @@ package io.statik.report;
 
 import com.mongodb.BasicDBList;
 import com.mongodb.BasicDBObject;
-import com.mongodb.DB;
-import com.mongodb.DBCollection;
+import com.trendrr.beanstalk.BeanstalkClient;
+import com.trendrr.beanstalk.BeanstalkException;
 import io.netty.buffer.ByteBuf;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -19,7 +19,6 @@ import java.util.logging.Level;
 public class MessageHandler {
 
     private final ReportServer rs;
-    private final String collection;
     private final Charset utf8 = Charset.forName("UTF-8");
     private final String badContent = this.createErrorResponse("Bad content.");
     private final String badVersion = this.createErrorResponse("Bad version.");
@@ -33,7 +32,6 @@ public class MessageHandler {
      */
     public MessageHandler(final ReportServer rs) {
         this.rs = rs;
-        this.collection = this.rs.getConfiguration().getString("config.database.collections.data", null);
     }
 
     /**
@@ -113,45 +111,20 @@ public class MessageHandler {
      */
     public String storeData(final JSONObject jo) throws JSONException {
         if (!this.rs.getConfiguration().pathExists("config.database.collections.data")) return this.internalError;
-        final DB db = this.rs.getMongoDB().getDB();
-        db.requestStart();
         try {
-            db.requestEnsureConnection();
-            final JSONObject system = jo.getJSONObject("system");
-            final JSONObject systemOS = system.getJSONObject("os");
-            final JSONObject minecraft = jo.getJSONObject("minecraft");
-            final JSONObject minecraftMod = minecraft.getJSONObject("mod");
-            final DBCollection dbc = db.getCollection(this.collection);
-            final BasicDBObject insert = new BasicDBObject()
-                .append("system", new BasicDBObject()
-                        .append("java", system.getString("java"))
-                        .append("cores", system.getInt("cores"))
-                        .append("memory", system.getLong("memory"))
-                        .append("os", new BasicDBObject()
-                                .append("name", systemOS.getString("name"))
-                                .append("version", systemOS.getString("version"))
-                                .append("arch", systemOS.getString("arch"))
-                        )
-                )
-                .append("minecraft", new BasicDBObject()
-                        .append("version", minecraft.getString("version"))
-                        .append("players", minecraft.getInt("players"))
-                        .append("online_mode", minecraft.getBoolean("online_mode"))
-                        .append("mod", new BasicDBObject()
-                                .append("name", minecraftMod.getString("name"))
-                                .append("version", minecraftMod.getString("version"))
-                        )
-                )
-                .append("plugins", this.createPluginList(jo.getJSONArray("plugins")));
-            dbc.insert(insert);
-        } catch (final JSONException ex) {
+            final Request r = new Request(jo).sanitize(); // will throw exception if invalid
+            final BeanstalkClient bsc = this.rs.getNewBeanstalkClient();
+            bsc.put(0L, 0, 5000, r.toString().getBytes(Charset.forName("UTF-8")));
+            bsc.close();
+        } catch (final JSONException | IllegalArgumentException ex) {
+            this.rs.getLogger().log(Level.SEVERE, ex.getMessage(), ex);
             return this.badContent;
-        } finally {
-            db.requestDone();
+        } catch (final BeanstalkException ex) {
+            return this.internalError;
         }
         final JSONStringer js = new JSONStringer();
         // TODO: Not this. Meaningful responses (next acceptable timestamp for new data)
-        return js.object().key("result").value("Data stored").endObject().toString();
+        return js.object().key("result").value("Data queued for storage.").endObject().toString();
     }
 
 }
