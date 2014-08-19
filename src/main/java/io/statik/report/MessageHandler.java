@@ -1,5 +1,10 @@
 package io.statik.report;
 
+import com.mongodb.BasicDBObject;
+import com.mongodb.DB;
+import com.mongodb.DBCollection;
+import com.mongodb.DBObject;
+import com.mongodb.MongoException;
 import com.trendrr.beanstalk.BeanstalkClient;
 import com.trendrr.beanstalk.BeanstalkException;
 import io.netty.buffer.ByteBuf;
@@ -19,9 +24,9 @@ import java.util.logging.Level;
 public class MessageHandler {
 
     private final ReportServer rs;
+    private final String timestampCollection;
     private final Charset utf8 = Charset.forName("UTF-8");
     private final String badContent = this.createErrorResponse("Bad content.");
-    private final String badVersion = this.createErrorResponse("Bad version.");
     private final String illegalContent = this.createErrorResponse("The content provided was an illegal type.");
     private final String internalError = this.createErrorResponse("An internal error occurred whilst processing your data.");
 
@@ -32,6 +37,7 @@ public class MessageHandler {
      */
     public MessageHandler(final ReportServer rs) {
         this.rs = rs;
+        this.timestampCollection = this.rs.getConfiguration().getString("config.database.collections.timestamps", null);
     }
 
     /**
@@ -44,9 +50,29 @@ public class MessageHandler {
         return new JSONStringer().object().key("error").value(value).endObject().toString();
     }
 
-    private byte getStatus(final UUID serverUUID) {
-        // TODO: check
-        return (byte) 0;
+    private Status getStatus(final UUID serverUUID, final int version, final short waitTime) {
+        if (version != 1) return Status.BAD_VERSION;
+        else if (waitTime > (short) 0) return Status.WAIT;
+        else return Status.GO_AHEAD;
+    }
+
+    private short getWaitTime(final UUID serverUUID) {
+        final DB db = this.rs.getMongoDB().getDB();
+        db.requestStart();
+        try {
+            db.requestEnsureConnection();
+            final DBCollection dbc = db.getCollection(this.timestampCollection);
+            final DBObject dbo = dbc.findOne(new BasicDBObject("uuid", serverUUID));
+            if (dbo == null) return (short) 0; // this client has never sent before
+            final Object timestampObject = dbo.get("timestamp");
+            if (!(timestampObject instanceof Number)) return (short) 60;
+            return (short) (((((Number) timestampObject).longValue() + 1800000L) - System.currentTimeMillis()) / (short) 1000);
+        } catch (final MongoException ex) {
+            this.rs.getLogger().log(Level.SEVERE, ex.getMessage(), ex);
+        } finally {
+            db.requestDone();
+        }
+        return (short) 60; // if some error happened
     }
 
     public String handleData(final ByteBuf bb, final Client client) {
@@ -54,9 +80,7 @@ public class MessageHandler {
         final String message = bb.toString(this.utf8);
         try {
             final JSONObject jo = new JSONObject(message);
-            final String version = jo.optString("version");
-            if (!version.equalsIgnoreCase("1.0.0")) return this.badVersion;
-            return this.storeData(jo);
+            return this.storeData(jo, client.getServerUUID());
         } catch (final JSONException ex) {
             return this.badContent;
         } catch (final Throwable t) {
@@ -67,19 +91,23 @@ public class MessageHandler {
         return this.internalError;
     }
 
-    public ByteBuf handleIntroduction(final ByteBuf bb, final Client c) {
+    public ByteBuf handleIntroduction(final ByteBuf bb, final Client client) {
         final int version = bb.getInt(0);
         final UUID uuid = new UUID(bb.getLong(1), bb.getLong(2));
+        if (client.getServerUUID() == null) client.setServerUUID(uuid);
         final byte[] badVersion = "Bad version".getBytes(Charset.forName("UTF-8"));
-        final ByteBuf ret = Unpooled.buffer(version == 1 ? 3 : 3 + badVersion.length);
-        final byte status = this.getStatus(uuid);
-        // TODO: bad status if bad version
-        ret.writeByte(status);
-        ret.writeShort((short) 0);
-        if (status != (byte) 0) {
+        final boolean isBadVersion = version != 1; // TODO: not hardcode this?
+        final ByteBuf ret = Unpooled.buffer(isBadVersion ? 3 : 3 + badVersion.length);
+        final short waitTime = this.getWaitTime(uuid);
+        final Status status = isBadVersion ? Status.BAD_VERSION : this.getStatus(uuid, version, waitTime);
+        ret.writeByte(status.getStatusByte());
+        ret.writeShort(waitTime);
+        if (status == Status.BAD_VERSION) {
             ret.writeBytes(badVersion);
-            c.setStage(Stage.NO_DATA);
-        } else c.setStage(Stage.DATA);
+            client.setStage(Stage.NO_DATA);
+        } else if (status == Status.WAIT) {
+            client.setStage(Stage.NO_DATA);
+        } else client.setStage(Stage.DATA);
         return ret;
     }
 
@@ -110,8 +138,29 @@ public class MessageHandler {
      * @return (JSON) String to be returned to client
      * @throws JSONException In case of any missing values
      */
-    public String storeData(final JSONObject jo) throws JSONException {
-        if (!this.rs.getConfiguration().pathExists("config.database.collections.data")) return this.internalError;
+    public String storeData(final JSONObject jo, final UUID uuid) throws JSONException {
+        if (!this.rs.getConfiguration().pathExists("config.database.collections.data")) {
+            this.rs.getLogger().warning("The data collection does not exist in the config.");
+            return this.internalError;
+        }
+        if (this.timestampCollection == null) {
+            this.rs.getLogger().warning("The timestamps collection does not exist in the config.");
+            return this.internalError;
+        }
+        // Update (or insert if necessary) a timestamp tied to the server UUID, for reporting the time left to wait
+        // before the client should send again.
+        final DB db = this.rs.getMongoDB().getDB();
+        db.requestStart();
+        try {
+            db.requestEnsureConnection();
+            final DBCollection dbc = db.getCollection(this.timestampCollection);
+            dbc.update(new BasicDBObject("uuid", uuid), new BasicDBObject("uuid", uuid).append("timestamp", System.currentTimeMillis()), true, false);
+        } catch (final MongoException ex) {
+            this.rs.getLogger().log(Level.SEVERE, ex.getMessage(), ex);
+            return this.internalError;
+        } finally {
+            db.requestDone();
+        }
         try {
             final Request r = new Request(jo).sanitize(); // will throw exception if invalid
             final BeanstalkClient bsc = this.rs.getNewBeanstalkClient();
@@ -123,11 +172,28 @@ public class MessageHandler {
             this.rs.getLogger().log(Level.SEVERE, ex.getMessage(), ex);
             return this.badContent;
         } catch (final BeanstalkException ex) {
+            this.rs.getLogger().log(Level.SEVERE, ex.getMessage(), ex);
             return this.internalError;
         }
         final JSONStringer js = new JSONStringer();
         // TODO: Not this. Meaningful responses (next acceptable timestamp for new data)
         return js.object().key("result").value("Data queued for storage.").endObject().toString();
+    }
+
+    private enum Status {
+        GO_AHEAD((byte) 0),
+        BAD_VERSION((byte) 1),
+        WAIT((byte) 2);
+
+        private final byte statusByte;
+
+        private Status(final byte statusByte) {
+            this.statusByte = statusByte;
+        }
+
+        public byte getStatusByte() {
+            return this.statusByte;
+        }
     }
 
 }

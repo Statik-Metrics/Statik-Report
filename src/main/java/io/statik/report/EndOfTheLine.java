@@ -4,6 +4,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.timeout.ReadTimeoutException;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.logging.Level;
@@ -30,7 +31,10 @@ public class EndOfTheLine extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(final ChannelHandlerContext ctx, final Throwable cause) throws Exception {
-        if (cause instanceof ReadTimeoutException) {
+        // The client idled for too long, so we'll just close their channel and move on.
+        // OR The client disconnected early
+        // TODO: Fix ignoring all IOExceptions (some may be legitimate)
+        if (cause instanceof ReadTimeoutException || cause instanceof IOException) {
             ctx.close();
             return;
         }

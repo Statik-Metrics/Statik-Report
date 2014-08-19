@@ -1,6 +1,7 @@
 package io.statik.report;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -30,6 +31,10 @@ public class ReportHandler extends ChannelInboundHandlerAdapter {
         this.mh = new MessageHandler(rs);
     }
 
+    private ByteBuf encodeString(final ByteBufAllocator bba, final String string) {
+        return ByteBufUtil.encodeString(bba, CharBuffer.wrap(string), Charset.forName("UTF-8"));
+    }
+
     @Override
     public void channelRead(final ChannelHandlerContext ctx, final Object msg) throws Exception {
         final SocketAddress sa = ctx.channel().remoteAddress();
@@ -41,14 +46,14 @@ public class ReportHandler extends ChannelInboundHandlerAdapter {
         }
         if (c == null) c = new Client(this.rs, isa);
         if (c.getStage() == Stage.NO_DATA) {
-            ctx.writeAndFlush(ByteBufUtil.encodeString(ctx.alloc(), CharBuffer.wrap("No data should be sent."), Charset.forName("UTF-8")));
+            ctx.writeAndFlush(this.encodeString(ctx.alloc(), "No data should be sent."));
             return;
         }
         try {
             final Object write = this.mh.handleMessage(msg, c);
             final ByteBuf bb;
             if (write instanceof String) {
-                bb = ByteBufUtil.encodeString(ctx.alloc(), CharBuffer.wrap((String) write), Charset.forName("UTF-8"));
+                bb = this.encodeString(ctx.alloc(), (String) write);
             } else if (write instanceof ByteBuf) {
                 bb = (ByteBuf) write;
             } else return;
@@ -56,6 +61,7 @@ public class ReportHandler extends ChannelInboundHandlerAdapter {
         } catch (final Throwable t) {
             this.rs.getLogger().warning("An exception occurred while reading a request:");
             this.rs.getLogger().log(Level.WARNING, t.getMessage(), t);
+            t.printStackTrace();
         } finally {
             ReferenceCountUtil.release(msg);
         }

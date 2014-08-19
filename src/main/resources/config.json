@@ -9,7 +9,8 @@
       "port": 27017,
       "database": "",
       "collections": {
-        "data": "data_collection"
+        "data": "data_collection",
+        "timestamps": "timestamps"
       },
       "auth": {
         "enabled": true,

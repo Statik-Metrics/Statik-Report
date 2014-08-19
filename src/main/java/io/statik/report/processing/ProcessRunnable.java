@@ -15,7 +15,7 @@ import java.util.logging.Level;
 public class ProcessRunnable implements Runnable {
 
     private final ReportServer rs;
-    final BeanstalkClient bsc;
+    private final BeanstalkClient bsc;
     private final String collection;
     private volatile boolean running = true;
 
